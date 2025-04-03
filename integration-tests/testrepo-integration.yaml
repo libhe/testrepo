@@ -1,10 +1,8 @@
 apiVersion: tekton.dev/v1
 kind: Pipeline
 metadata:
-  name: testrepo-integration-test-run
+  name: testrepo-integration-test
 spec:
-  pipelineRef:
-    name: testrepo-integration-test
   params:
     - name: SNAPSHOT
       type: string
