@@ -28,7 +28,7 @@ spec:
             type: string
         steps:
           - name: test-output
-            image: docker.io/bitnami/kubectl:latest
+            image: docker.io/bitnami/kubectl:1.25
             env:
               - name: SNAPSHOT
                 value: "$(params.SNAPSHOT)"
