@@ -1,8 +1,10 @@
 apiVersion: tekton.dev/v1
 kind: Pipeline
 metadata:
-  name: testrepo-integration-test
+  name: testrepo-integration-test-run
 spec:
+  pipelineRef:
+    name: testrepo-integration-test
   params:
     - name: SNAPSHOT
       type: string
@@ -26,22 +28,48 @@ spec:
             type: string
         steps:
           - name: test-output
-            image: docker.io/bitnami/kubectl:latest
-            env:
-              - name: SNAPSHOT
-                value: "$(params.SNAPSHOT)"
-              - name: NAMESPACE
-                value: "$(context.pipelineRun.namespace)"
+            image: bitnami/kubectl:1.25
             script: |
               #!/usr/bin/bash
               set -euxo pipefail
 
+              # Debugging SNAPSHOT value
+              echo "SNAPSHOT CONTENT: $SNAPSHOT"
+
               IMAGE=$(echo "$SNAPSHOT" | jq -r '.components[0].containerImage')
+              if [[ -z "$IMAGE" || "$IMAGE" == "null" ]]; then
+                echo "Error: Image value is empty. Check SNAPSHOT JSON."
+                exit 1
+              fi
+              
               echo "Extracted image: $IMAGE"
-              kubectl delete job --ignore-not-found test-hello -n $NAMESPACE
-              kubectl delete pods --ignore-not-found -l job-name=test-hello -n $NAMESPACE
-              kubectl create job test-hello -n $NAMESPACE --image=$IMAGE
-              kubectl wait --for=condition=complete job/test-hello --timeout=120s
-              LOGS=$(kubectl logs -l job-name=test-hello -n $NAMESPACE)
-              kubectl delete job --ignore-not-found test-hello -n $NAMESPACE
-              echo $LOGS | grep "hello world"
+
+              NAMESPACE="$(context.pipelineRun.namespace)"
+
+              kubectl delete job --ignore-not-found test-hello -n "$NAMESPACE"
+              kubectl delete pods --ignore-not-found -l job-name=test-hello -n "$NAMESPACE"
+
+              kubectl create job test-hello --image=$IMAGE -n "$NAMESPACE"
+
+              # Ensure job was created successfully
+              kubectl get jobs -n "$NAMESPACE"
+              kubectl describe job test-hello -n "$NAMESPACE"
+
+              # Wait for job to complete
+              kubectl wait --for=condition=complete job/test-hello -n "$NAMESPACE" --timeout=120s || {
+                echo "Error: Job did not complete successfully."
+                kubectl logs -l job-name=test-hello -n "$NAMESPACE"
+                exit 1
+              }
+
+              LOGS=$(kubectl logs -l job-name=test-hello -n "$NAMESPACE")
+              echo "$LOGS"
+
+              # Ensure "hello world" appears in logs
+              echo "$LOGS" | grep "hello world" || {
+                echo "Error: 'hello world' not found in job logs."
+                exit 1
+              }
+
+              # Cleanup
+              kubectl delete job --ignore-not-found test-hello -n "$NAMESPACE"
