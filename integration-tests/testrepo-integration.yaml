@@ -11,7 +11,7 @@ spec:
           {
             "components": [
               {
-                "containerImage": "quay.io/example/repo:latest"
+                "containerImage": "quay.io/rh-ee-libhe-tenant/testrepo-integration-test:latest"
               }
             ]
           }
