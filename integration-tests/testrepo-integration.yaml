@@ -1,40 +1,49 @@
 apiVersion: tekton.dev/v1
-kind: PipelineRun
+kind: Pipeline
 metadata:
   name: testrepo-integration-test-run
-  namespace: rh-ee-libhe-tenant
 spec:
-  pipelineSpec:
-    params:
-      - name: SNAPSHOT
-        type: string
-    tasks:
-      - name: test-hello-world
-        params:
-          - name: SNAPSHOT
-            value: "$(params.SNAPSHOT)"
-        taskSpec:
-          params:
-            - name: SNAPSHOT
-              type: string
-          steps:
-            - name: test-output
-              image: bitnami/kubectl:1.25
-              script: |
-                #!/usr/bin/bash
-                set -euxo pipefail
-
-                IMAGE=$(echo "$SNAPSHOT" | jq -r '.components[0].containerImage')
-                echo "Extracted image: $IMAGE"
-
-                NAMESPACE="$(context.pipelineRun.namespace)"
-                kubectl delete job --ignore-not-found test-hello -n "$NAMESPACE"
-                kubectl delete pods --ignore-not-found -l job-name=test-hello -n "$NAMESPACE"
-                kubectl create job test-hello --image=$IMAGE -n "$NAMESPACE"
-                kubectl wait --for=condition=complete job/test-hello -n "$NAMESPACE" --timeout=120s
-                LOGS=$(kubectl logs -l job-name=test-hello -n "$NAMESPACE")
-                kubectl delete job --ignore-not-found test-hello -n "$NAMESPACE"
-                echo "$LOGS" | grep "hello world"
+  pipelineRef:
+    name: testrepo-integration-test
   params:
     - name: SNAPSHOT
-      value: '{"components": [{"containerImage": "quay.io/redhat-user-workloads/rh-ee-libhe-tenant/testrepo:latest"}]}'
+      type: string
+      description: |
+        For simplicity, we expect a single component inside our snapshot
+          {
+            "components": [
+              {
+                "containerImage": "quay.io/redhat-user-workloads/rh-ee-libhe-tenant/testrepo:latest"
+              }
+            ]
+          }
+  tasks:
+    - name: test-hello-world
+      params:
+        - name: SNAPSHOT
+          value: "$(params.SNAPSHOT)"
+      taskSpec:
+        params:
+          - name: SNAPSHOT
+            type: string
+        steps:
+          - name: test-output
+            image: docker.io/bitnami/kubectl:latest
+            env:
+              - name: SNAPSHOT
+                value: "$(params.SNAPSHOT)"
+              - name: NAMESPACE
+                value: "$(context.pipelineRun.namespace)"
+            script: |
+              #!/usr/bin/bash
+              set -euxo pipefail
+
+              IMAGE=$(echo "$SNAPSHOT" | jq -r '.components[0].containerImage')
+              echo "Extracted image: $IMAGE"
+              kubectl delete job --ignore-not-found test-hello -n $NAMESPACE
+              kubectl delete pods --ignore-not-found -l job-name=test-hello -n $NAMESPACE
+              kubectl create job test-hello -n $NAMESPACE --image=$IMAGE
+              kubectl wait --for=condition=complete job/test-hello --timeout=120s
+              LOGS=$(kubectl logs -l job-name=test-hello -n $NAMESPACE)
+              kubectl delete job --ignore-not-found test-hello -n $NAMESPACE
+              echo $LOGS | grep "hello world"
