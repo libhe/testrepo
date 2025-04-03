@@ -1,75 +1,40 @@
 apiVersion: tekton.dev/v1
-kind: Pipeline
+kind: PipelineRun
 metadata:
   name: testrepo-integration-test-run
+  namespace: rh-ee-libhe-tenant
 spec:
-  pipelineRef:
-    name: testrepo-integration-test
-  params:
-    - name: SNAPSHOT
-      type: string
-      description: |
-        For simplicity, we expect a single component inside our snapshot
-          {
-            "components": [
-              {
-                "containerImage": "quay.io/redhat-user-workloads/rh-ee-libhe-tenant/testrepo:latest"
-              }
-            ]
-          }
-  tasks:
-    - name: test-hello-world
-      params:
-        - name: SNAPSHOT
-          value: "$(params.SNAPSHOT)"
-      taskSpec:
+  pipelineSpec:
+    params:
+      - name: SNAPSHOT
+        type: string
+    tasks:
+      - name: test-hello-world
         params:
           - name: SNAPSHOT
-            type: string
-        steps:
-          - name: test-output
-            image: bitnami/kubectl:1.25
-            script: |
-              #!/usr/bin/bash
-              set -euxo pipefail
+            value: "$(params.SNAPSHOT)"
+        taskSpec:
+          params:
+            - name: SNAPSHOT
+              type: string
+          steps:
+            - name: test-output
+              image: bitnami/kubectl:1.25
+              script: |
+                #!/usr/bin/bash
+                set -euxo pipefail
 
-              # Debugging SNAPSHOT value
-              echo "SNAPSHOT CONTENT: $SNAPSHOT"
+                IMAGE=$(echo "$SNAPSHOT" | jq -r '.components[0].containerImage')
+                echo "Extracted image: $IMAGE"
 
-              IMAGE=$(echo "$SNAPSHOT" | jq -r '.components[0].containerImage')
-              if [[ -z "$IMAGE" || "$IMAGE" == "null" ]]; then
-                echo "Error: Image value is empty. Check SNAPSHOT JSON."
-                exit 1
-              fi
-              
-              echo "Extracted image: $IMAGE"
-
-              NAMESPACE="$(context.pipelineRun.namespace)"
-
-              kubectl delete job --ignore-not-found test-hello -n "$NAMESPACE"
-              kubectl delete pods --ignore-not-found -l job-name=test-hello -n "$NAMESPACE"
-
-              kubectl create job test-hello --image=$IMAGE -n "$NAMESPACE"
-
-              # Ensure job was created successfully
-              kubectl get jobs -n "$NAMESPACE"
-              kubectl describe job test-hello -n "$NAMESPACE"
-
-              # Wait for job to complete
-              kubectl wait --for=condition=complete job/test-hello -n "$NAMESPACE" --timeout=120s || {
-                echo "Error: Job did not complete successfully."
-                kubectl logs -l job-name=test-hello -n "$NAMESPACE"
-                exit 1
-              }
-
-              LOGS=$(kubectl logs -l job-name=test-hello -n "$NAMESPACE")
-              echo "$LOGS"
-
-              # Ensure "hello world" appears in logs
-              echo "$LOGS" | grep "hello world" || {
-                echo "Error: 'hello world' not found in job logs."
-                exit 1
-              }
-
-              # Cleanup
-              kubectl delete job --ignore-not-found test-hello -n "$NAMESPACE"
+                NAMESPACE="$(context.pipelineRun.namespace)"
+                kubectl delete job --ignore-not-found test-hello -n "$NAMESPACE"
+                kubectl delete pods --ignore-not-found -l job-name=test-hello -n "$NAMESPACE"
+                kubectl create job test-hello --image=$IMAGE -n "$NAMESPACE"
+                kubectl wait --for=condition=complete job/test-hello -n "$NAMESPACE" --timeout=120s
+                LOGS=$(kubectl logs -l job-name=test-hello -n "$NAMESPACE")
+                kubectl delete job --ignore-not-found test-hello -n "$NAMESPACE"
+                echo "$LOGS" | grep "hello world"
+  params:
+    - name: SNAPSHOT
+      value: '{"components": [{"containerImage": "quay.io/redhat-user-workloads/rh-ee-libhe-tenant/testrepo:latest"}]}'
