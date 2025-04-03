@@ -11,7 +11,7 @@ spec:
           {
             "components": [
               {
-                "containerImage": "quay.io/libhe/testrepo-integration-test:latest"
+                "containerImage": "quay.io/redhat-user-workloads/rh-ee-libhe-tenant/testrepo:latest"
               }
             ]
           }
