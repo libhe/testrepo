@@ -27,6 +27,7 @@ spec:
         steps:
           - name: test-output
             image: docker.io/bitnami/kubectl:1.25
+            workingDir: /tekton/home
             env:
               - name: SNAPSHOT
                 value: "$(params.SNAPSHOT)"
